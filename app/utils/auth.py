@@ -1,7 +1,7 @@
 import jwt
 from jwt.exceptions import InvalidTokenError
 from ..database import SessionDep
-from ..models.user import UserDB
+from ..models.base_db import UserDB
 from sqlmodel import select
 from sqlalchemy.sql import or_
 from fastapi.security import OAuth2PasswordBearer

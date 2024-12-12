@@ -1,5 +1,6 @@
 from fastapi import APIRouter,HTTPException
-from ..models.user import UserInput,UserDB,LoginInput
+from ..models.user import UserInput,LoginInput
+from ..models.base_db import UserDB
 from ..database import SessionDep
 from sqlmodel import select
 from sqlalchemy.sql import or_

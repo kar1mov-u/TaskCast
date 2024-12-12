@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel,Field
+from sqlmodel import SQLModel,Field,Relationship
 from pydantic import EmailStr
 from datetime import datetime
 
@@ -9,10 +9,7 @@ class UserInput(SQLModel):
     full_name : str = Field(nullable=False)
     password: str = Field(nullable=False)
 
-class UserDB(UserInput, table=True):
-    id: int| None=Field(default=None,primary_key=True)
-    created_at: datetime =Field(default_factory=datetime.utcnow)
-    
+
 class LoginInput(SQLModel):
     username:str
     password:str
