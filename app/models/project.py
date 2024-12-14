@@ -22,6 +22,7 @@ class ProjectInput(SQLModel):
 class ProjectParticipant(SQLModel):
     username:str
     user_id:int
+    user_type:str
     
 
 class ProjectRead(ProjectInput):
@@ -31,3 +32,4 @@ class ProjectRead(ProjectInput):
     updated_at:datetime
 
     
+
