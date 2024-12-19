@@ -2,7 +2,6 @@ from sqlmodel import SQLModel,Field,Relationship
 from pydantic import EmailStr
 from datetime import datetime
 
-
 class UserInput(SQLModel):
     username:str = Field(nullable=False, unique=True, index=True)
     email:EmailStr = Field(nullable=False, unique=True, index=True)

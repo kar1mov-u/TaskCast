@@ -25,11 +25,6 @@ class ProjectParticipant(SQLModel):
     user_type:str
     
 
-class ProjectRead(ProjectInput):
-    participants:list[ProjectParticipant]
-    id:int
-    created_at:datetime
-    updated_at:datetime
 
     
 

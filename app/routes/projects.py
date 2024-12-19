@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException,Depends
-from ..models.project import ProjectInput,ProjectParticipant,ProjectRead
-from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser
+from ..models.project import ProjectInput,ProjectParticipant
+from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser,TaskInput,TasksDB,ProjectRead,TaskRead
 from sqlalchemy.orm import joinedload,selectinload
 from ..database import SessionDep
 from sqlmodel import select
@@ -46,17 +46,6 @@ def get_project(id:int, session:SessionDep):
         ).first()
     if not project_db:
         raise HTTPException(status_code=404, detail="There is no such project")
-    # participants= []
-    # for particiapnt in project_db.participants:
-    #     user_type = session.exec(select(ProjectUserLink.user_type).where(ProjectUserLink.project_id==id, ProjectUserLink.user_id==particiapnt.id)).first()
-    #     participants.append(ProjectParticipant(user_id=particiapnt.id,username=particiapnt.username, user_type=user_type))        
-    # user_types = {
-    #     (link.user_id): link.user_type
-    #     for link in session.exec(
-    #         select(ProjectUserLink.user_id, ProjectUserLink.user_type)
-    #         .where(ProjectUserLink.project_id == id)
-    #     ).all()
-    # }
 
 
 
@@ -77,7 +66,13 @@ def get_project(id:int, session:SessionDep):
         )
         for part in project_db.participants
     ]
-    project = ProjectRead(**project_db.model_dump(),participants=participants)
+    print(type(project_db.tasks))
+    tasks = [
+    TaskRead(**task.model_dump())
+        for task in project_db.tasks
+    ]
+    project = ProjectRead(**project_db.model_dump(), participants=participants, tasks=tasks)
+    
     
     return project
 
@@ -106,8 +101,10 @@ def add_user(id:int, data:AddUser,session:SessionDep,user=Depends(get_current_us
     if is_user_in_project:
         raise HTTPException(status_code=403, detail="THis user is already in project")
     
+    #Add user to the Project
     project_db.participants.append(added_user)
     session.flush()
+    #Set user type from link table entry
     link_table_entry = session.exec(select(ProjectUserLink).where(ProjectUserLink.user_id==added_user.id, ProjectUserLink.project_id==id)).first()
     if link_table_entry:
         link_table_entry.user_type=data.user_type
@@ -116,3 +113,35 @@ def add_user(id:int, data:AddUser,session:SessionDep,user=Depends(get_current_us
     session.commit()
     return {"success": True, "message": f"User {added_user.username} added to project with role {data.user_type}"}
     
+    
+    
+@router.post('/projects/{id}/tasks/create')
+def create(id:int,data:TaskInput,session:SessionDep, user=Depends(get_current_user) ):
+    #Check if the user can create a task in the project
+    user_project_entry = session.exec(select(ProjectUserLink).where(ProjectUserLink.user_id==user.id, ProjectUserLink.project_id==id)).first()
+    if not user_project_entry:
+        raise HTTPException(status_code=404, detail="Cannot add task, there is error")
+    if user_project_entry.user_type=='user':
+        raise HTTPException(status_code=401, detail="You do not have permission to add task")
+    
+    
+    
+    #turn input to the DB object
+    user_ids = set(data.assigned_users)
+    users = session.exec(select(UserDB).where(UserDB.id.in_(user_ids) )).all()
+    task_db = TasksDB(title=data.title,
+                      description=data.description,
+                      parent_id=data.parent_id,
+                      creator_id=user.id, 
+                      project_id=id
+                      )
+    
+    for user in users:
+        task_db.assigned_users.append(user)
+    project = session.get(ProjectDB,id)
+    project.tasks.append(task_db)
+    session.add(task_db)
+    session.commit()
+    session.refresh(task_db)
+    print(task_db)
+    return task_db

@@ -1,6 +1,7 @@
 from sqlmodel import Field, Relationship, SQLModel
-from .project import ProjectInput
+from .project import ProjectInput,ProjectParticipant
 from enum import Enum
+from typing import Optional
 from .user import UserInput
 from datetime import datetime
 
@@ -14,9 +15,6 @@ class ProjectUserLink(SQLModel, table=True):
     project_id: int = Field(foreign_key="projectdb.id", primary_key=True)
     user_id: int = Field(foreign_key="userdb.id", primary_key=True)
     user_type: UserType = Field(nullable=False, default=UserType.USER)
- #   user: "UserDB" = Relationship(back_populates="projects_link")
-    # project: "ProjectDB" = Relationship(back_populates="participants")
-
 
 class ProjectDB(ProjectInput, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -29,7 +27,19 @@ class ProjectDB(ProjectInput, table=True):
         back_populates="projects",
         link_model=ProjectUserLink
     )
+    tasks:list["TasksDB"] = Relationship(back_populates="project")
+    
+class ProjectRead(ProjectInput):
+    participants:list[ProjectParticipant]
+    tasks:list["TaskRead"]
+    id:int
+    created_at:datetime
+    updated_at:datetime
 
+
+class UserTaskLink(SQLModel,table=True):
+    user_id:int = Field(foreign_key="userdb.id",primary_key=True)
+    task_id:int =Field(foreign_key="tasksdb.id",primary_key=True)
 
 class UserDB(UserInput, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -40,6 +50,10 @@ class UserDB(UserInput, table=True):
         back_populates="participants",
         link_model=ProjectUserLink
     )
+    tasks: list["TasksDB"] = Relationship(
+        link_model=UserTaskLink,
+        back_populates="assigned_users"
+    )
     
     # This relationship is for the intermediate link, which is optional unless you need direct access
    #projects_link: list[ProjectUserLink] = Relationship(back_populates="user")
@@ -47,3 +61,39 @@ class UserDB(UserInput, table=True):
 class AddUser(SQLModel):
     user_id:int
     user_type:UserType
+
+
+class UserReturn(SQLModel):
+    username:str
+    email:str
+    full_name:str
+
+class TaskInput(SQLModel):
+    title:str
+    description:Optional[str] =None
+    assigned_users:list[int]
+    parent_id:Optional[int]=None
+    
+
+
+class TasksDB(SQLModel, table=True):  # Ensure it's set as a database table
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: Optional[str] = None
+    parent_id: Optional[int] = Field(default=None, foreign_key="tasksdb.id")  # Reference the same table
+    parent: Optional["TasksDB"] = Relationship(back_populates="children", sa_relationship_kwargs={"remote_side": "TasksDB.id"})
+    children: Optional[list["TasksDB"]] = Relationship(back_populates="parent")  # A task can have multiple children
+    assigned_users: list["UserDB"] = Relationship(back_populates="tasks",link_model=UserTaskLink)
+    creator_id: int
+    project_id: int = Field(foreign_key="projectdb.id")
+    project: "ProjectDB" = Relationship(back_populates="tasks")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TaskRead(SQLModel):
+    title: str
+    description: Optional[str] = None
+    parent_id:Optional[int] =None
+    asassigned_users: Optional[list["UserDB"]]=None
+    creator_id:int
+    created_at:datetime
