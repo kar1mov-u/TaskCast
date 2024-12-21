@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException,Depends
 from ..models.project import ProjectInput,ProjectParticipant
-from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser,TaskInput,TasksDB,ProjectRead,TaskRead
+from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser,TaskInput,TasksDB,ProjectRead,TaskRead,UserAssigned
 from sqlalchemy.orm import joinedload,selectinload
 from ..database import SessionDep
 from sqlmodel import select
 from ..utils.auth import get_current_user
+from ..utils.helpers import get_project_by_id,get_user_by_id,check_user_permission
 router = APIRouter(tags=['projects'])
 
 @router.post('/projects/create')
@@ -30,7 +31,7 @@ def create_project(project_data:ProjectInput, session:SessionDep,user=Depends(ge
             )
         ).first()
     if link_table_entry:
-        link_table_entry.user_type="moderator"
+        link_table_entry.user_type="creator"
     
     #Commit changes
     session.commit()
@@ -41,13 +42,11 @@ def create_project(project_data:ProjectInput, session:SessionDep,user=Depends(ge
 @router.get('/projects/{id}',response_model=ProjectRead)
 def get_project(id:int, session:SessionDep):
     project_db= session.exec(
-        select(ProjectDB).options(selectinload(ProjectDB.participants))
+        select(ProjectDB).options(selectinload(ProjectDB.participants),selectinload(ProjectDB.tasks))
         .where(ProjectDB.id==id)
         ).first()
     if not project_db:
         raise HTTPException(status_code=404, detail="There is no such project")
-
-
 
     #FOr every user create map their type    
     user_types = {
@@ -66,11 +65,27 @@ def get_project(id:int, session:SessionDep):
         )
         for part in project_db.participants
     ]
-    print(type(project_db.tasks))
+    #Iterate over tasks and serialize them
+    print(project_db.tasks[0].assigned_users)
+    print(type(project_db.tasks[0].assigned_users))
     tasks = [
-    TaskRead(**task.model_dump())
+        TaskRead(
+            title=task.title,
+            description=task.description,
+            parent_id=task.parent_id,
+            creator_id=task.creator_id,
+            creator_name=task.creator_name,
+            created_at = task.created_at,
+            asassigned_users=[
+                UserAssigned(username=usr.username,id=usr.id)
+                for usr in task.assigned_users
+                
+            ]
+            
+        )
         for task in project_db.tasks
     ]
+    
     project = ProjectRead(**project_db.model_dump(), participants=participants, tasks=tasks)
     
     
@@ -80,18 +95,12 @@ def get_project(id:int, session:SessionDep):
 @router.post('/projects/{id}/add_user')
 def add_user(id:int, data:AddUser,session:SessionDep,user=Depends(get_current_user)):
     #Check if current user has a permission to add users to project
-    type_check = session.exec(select(ProjectUserLink).where(ProjectUserLink.user_id==user.id, ProjectUserLink.project_id==id)).first()
-    
-    if not type_check or type_check=="user":
-        raise HTTPException(status_code=403,detail="You do not have previlige to add users")
+    check_user_permission(user_id=user.id, project_id=id,allowed_type=['moderator','creator'],session=session)
    
-    project_db = session.get(ProjectDB,id)
-    if not project_db:
-        raise HTTPException(status_code=404,detail="Project not found")
+    project_db = get_project_by_id(id,session)
     
-    added_user = session.get(UserDB,data.user_id)
-    if not added_user:
-        raise HTTPException(status_code=404,detail="User not found")
+    added_user = get_user_by_id(data.user_id,session)
+
     
     #CHeck if user exists in the project
     is_user_in_project = session.exec(
@@ -114,6 +123,9 @@ def add_user(id:int, data:AddUser,session:SessionDep,user=Depends(get_current_us
     return {"success": True, "message": f"User {added_user.username} added to project with role {data.user_type}"}
     
     
+# @router.post('/projects/{id}/delete_user')
+# def delete_user(id:int, session:SessionDep,user = Depends(get_current_user)):
+    
     
 @router.post('/projects/{id}/tasks/create')
 def create(id:int,data:TaskInput,session:SessionDep, user=Depends(get_current_user) ):
@@ -126,22 +138,27 @@ def create(id:int,data:TaskInput,session:SessionDep, user=Depends(get_current_us
     
     
     
-    #turn input to the DB object
     user_ids = set(data.assigned_users)
+    #get all the assigned users
     users = session.exec(select(UserDB).where(UserDB.id.in_(user_ids) )).all()
+    if len(users)!=len(user_ids):
+        raise HTTPException(status_code=404, detail="One or more users is not valid")
     task_db = TasksDB(title=data.title,
                       description=data.description,
                       parent_id=data.parent_id,
                       creator_id=user.id, 
+                      creator_name=user.username,
                       project_id=id
                       )
     
+    #add users to the taskDB object
+    session.add(task_db)
+    
     for user in users:
         task_db.assigned_users.append(user)
-    project = session.get(ProjectDB,id)
-    project.tasks.append(task_db)
-    session.add(task_db)
+        
+
+    
     session.commit()
     session.refresh(task_db)
-    print(task_db)
     return task_db

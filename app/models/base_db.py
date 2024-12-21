@@ -64,9 +64,11 @@ class AddUser(SQLModel):
 
 
 class UserReturn(SQLModel):
+    id:int
     username:str
     email:str
     full_name:str
+    projects:list[dict]
 
 class TaskInput(SQLModel):
     title:str
@@ -85,15 +87,20 @@ class TasksDB(SQLModel, table=True):  # Ensure it's set as a database table
     children: Optional[list["TasksDB"]] = Relationship(back_populates="parent")  # A task can have multiple children
     assigned_users: list["UserDB"] = Relationship(back_populates="tasks",link_model=UserTaskLink)
     creator_id: int
+    creator_name:str
     project_id: int = Field(foreign_key="projectdb.id")
     project: "ProjectDB" = Relationship(back_populates="tasks")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class UserAssigned(SQLModel):
+    username:str
+    id:int
 
 class TaskRead(SQLModel):
     title: str
     description: Optional[str] = None
     parent_id:Optional[int] =None
-    asassigned_users: Optional[list["UserDB"]]=None
+    asassigned_users: Optional[list["UserAssigned"]]="Nigas"
     creator_id:int
+    creator_name:str
     created_at:datetime

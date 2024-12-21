@@ -1,4 +1,4 @@
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Depends
 from ..models.user import UserInput,LoginInput
 from ..models.base_db import UserDB
 from ..database import SessionDep
@@ -7,6 +7,7 @@ from sqlalchemy.sql import or_
 from sqlalchemy.exc import IntegrityError
 from ..utils.helpers import hash_pass,verify_pass
 from ..utils.auth import create_access_token
+from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 router = APIRouter(tags=["auth"])
 
@@ -25,7 +26,7 @@ def register(user_data:UserInput, session:SessionDep):
     
     
 @router.post('/login')
-def login(user_data:LoginInput, session:SessionDep):
+def login(session:SessionDep,user_data:OAuth2PasswordRequestForm=Depends()):
     user_db = session.exec(select(UserDB).where(or_(UserDB.email==user_data.username,UserDB.username==user_data.username))).first()
     if not user_db:
         raise HTTPException(status_code=404, detail="There is no such user")
