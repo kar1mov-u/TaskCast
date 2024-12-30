@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException,Depends
 from ..models.project import ProjectInput,ProjectParticipant
-from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser,TaskInput,TasksDB,ProjectRead,TaskRead,UserAssigned
+from ..models.user import DeleteUser
+from ..models.base_db import ProjectDB,ProjectUserLink,UserDB,AddUser,TaskInput,TasksDB,ProjectRead,TaskRead,UserAssigned,UpdateUser
 from sqlalchemy.orm import joinedload,selectinload
 from ..database import SessionDep
 from sqlmodel import select
 from ..utils.auth import get_current_user
-from ..utils.helpers import get_project_by_id,get_user_by_id,check_user_permission
+from ..utils.helpers import get_project_by_id,get_user_by_id,check_user_permission,get_type_of_user
 router = APIRouter(tags=['projects'])
 
 @router.post('/projects/create')
@@ -66,8 +67,6 @@ def get_project(id:int, session:SessionDep):
         for part in project_db.participants
     ]
     #Iterate over tasks and serialize them
-    print(project_db.tasks[0].assigned_users)
-    print(type(project_db.tasks[0].assigned_users))
     tasks = [
         TaskRead(
             title=task.title,
@@ -123,10 +122,53 @@ def add_user(id:int, data:AddUser,session:SessionDep,user=Depends(get_current_us
     return {"success": True, "message": f"User {added_user.username} added to project with role {data.user_type}"}
     
     
-# @router.post('/projects/{id}/delete_user')
-# def delete_user(id:int, session:SessionDep,user = Depends(get_current_user)):
+@router.delete('/projects/{id}/delete_user')
+def delete_user(id:int,data:DeleteUser, session:SessionDep,user = Depends(get_current_user)):
+    #getting type of users 
+    del_user_type = get_type_of_user(user_id=data.user_id,project_id=id, session=session)
+    other_user_type = get_type_of_user(user_id=user.id,project_id=id, session=session)
+    #Validate Previleges
+    if other_user_type =="user":
+        raise HTTPException(status_code=401,detail="You do not have sufficent privileges")
+    elif other_user_type=="moderator" and del_user_type=="moderator":
+        raise HTTPException(status_code=401, detail="Moderators cannot delete other moderator")
+    elif del_user_type=="creator":
+        raise HTTPException(status_code=401, detail="Creator cannot be deleted")
     
-    
+    #getting the record from the projec-user link table
+    db_entry = session.exec(select(ProjectUserLink).where(
+        ProjectUserLink.project_id==id, 
+        ProjectUserLink.user_id==data.user_id
+        )
+    ).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="User not found in the project")
+    session.delete(db_entry)
+    session.commit()
+    return {"detail": f"User with ID {data.user_id} successfully removed from project {id}."}
+
+
+
+@router.patch('/projects/{id}/update_user')
+def update_user(id:int,data:UpdateUser, session:SessionDep, user = Depends(get_current_user)):
+    user_perm = get_type_of_user(user_id=user.id, project_id=id, session=session)
+    if user_perm !="creator":
+        raise HTTPException(status_code=401, detail="Only Creator can assign user types")
+    if data.new_type=="creator":
+        raise HTTPException(status_code=400,detail="Cannot assign Creator")
+    #Getting DB record
+    db_entry = session.exec(select(ProjectUserLink).where(ProjectUserLink.project_id==id, ProjectUserLink.user_id==data.user_id)).first()
+    if not db_entry:
+        raise HTTPException(status_code=404,detail="User not found in the project" )
+    db_entry.user_type=data.new_type
+    session.add(db_entry)
+    session.commit()
+    return {
+    "user_id": data.user_id,
+    "new_type": data.new_type,
+    "detail": f"Privilege successfully updated."
+    }
+
 @router.post('/projects/{id}/tasks/create')
 def create(id:int,data:TaskInput,session:SessionDep, user=Depends(get_current_user) ):
     #Check if the user can create a task in the project

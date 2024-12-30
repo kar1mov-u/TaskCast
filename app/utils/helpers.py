@@ -19,7 +19,7 @@ def get_project_by_id(id:int, session:SessionDep)->ProjectDB:
 
 def get_user_by_id(id:int,session:SessionDep) ->UserDB:
     user = session.exec(select(UserDB).where(UserDB.id==id)).first()
-    if not user:
+    if not user:    
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
@@ -28,3 +28,9 @@ def check_user_permission(user_id:int, project_id:int, session:SessionDep, allow
     if not link_model_entry or link_model_entry.user_type not in allowed_type:
         raise HTTPException(status_code=401, detail="Permission denied")
     return True
+
+def get_type_of_user(user_id:int, project_id:int, session:SessionDep)->str:
+    entry_in_link_table = session.exec(select(ProjectUserLink).where(ProjectUserLink.project_id==project_id, ProjectUserLink.user_id==user_id)).first()
+    if not entry_in_link_table:
+        raise HTTPException(status_code=404, detail="There is no such user")
+    return entry_in_link_table.user_type

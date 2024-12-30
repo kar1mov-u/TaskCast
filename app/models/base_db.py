@@ -104,3 +104,8 @@ class TaskRead(SQLModel):
     creator_id:int
     creator_name:str
     created_at:datetime
+    
+    
+class UpdateUser(SQLModel):
+    new_type : UserType
+    user_id:int

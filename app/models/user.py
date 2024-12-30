@@ -12,3 +12,6 @@ class UserInput(SQLModel):
 class LoginInput(SQLModel):
     username:str
     password:str
+
+class DeleteUser(SQLModel):
+    user_id:int

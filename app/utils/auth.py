@@ -34,7 +34,7 @@ def create_access_token(data:dict, expires_delta:timedelta|None=None):
     return Token(token_type="Bearer", access_token=encoded_jwt)
 
 
-def get_current_user(session:SessionDep, token:str=Depends(oauth2_scheme)):
+def get_current_user(session:SessionDep, token:str=Depends(oauth2_scheme))->UserDB:
     credentials_execption = HTTPException(
         status_code=401,
         detail="Couldn't validate credentials",
